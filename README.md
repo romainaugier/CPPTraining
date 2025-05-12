@@ -1,1 +1,1 @@
-# CPPExercices
+# CPPTraining
