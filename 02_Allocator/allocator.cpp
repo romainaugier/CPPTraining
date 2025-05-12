@@ -5,16 +5,27 @@
 #include <cstdint>
 #include <cstddef>
 #include <memory>
+#include <cstdlib>
+#include <iostream>
+#include <cmath>
 
-enum class Color {
+enum Color : std::size_t {
     Red,
     Black,
 };
 
-enum class BlockState {
+enum BlockState : std::size_t {
     Free,
     Occupied,
 };
+
+inline void* align_forward(const void* ptr, const std::size_t alignment) noexcept
+{
+    const std::uintptr_t addr = reinterpret_cast<std::uintptr_t>(ptr);
+    const std::uintptr_t aligned_addr = (addr + alignment - 1) & ~(alignment - 1);
+
+    return reinterpret_cast<void*>(aligned_addr);
+}
 
 class Allocator
 {
@@ -40,12 +51,13 @@ private:
         MemoryBlock* _next;
         MemoryBlock* _prev;
 
-        std::size_t _size;
         void* _address;
+
+        std::size_t _size;
         std::size_t _alignment : 62;
 
-        Color _color : 1;
-        BlockState _state : 1;
+        std::size_t _color : 1;
+        std::size_t _state : 1;
 
     public:
         MemoryBlock(const std::size_t size, 
@@ -66,52 +78,54 @@ private:
 
     MemoryBlock* _root;
 
+    std::size_t _size;
+
+    std::size_t _num_blocks;
+
+    void* _base_address;
+
     template<Direction Dir>
     void rotate(MemoryBlock* block) noexcept
     {
         static_assert(Dir == Direction::Left || Dir == Direction::Right, "Dir template parameter must be Direction::Left or Direction::Right");
 
-        MemoryBlock* child;
+        MemoryBlock* child = nullptr;
+        MemoryBlock*& block_child_ptr = (Dir == Direction::Left) ? block->_right : block->_left;
 
-        if constexpr (Dir == Direction::Left)
+        child = block_child_ptr;
+
+        if(child == nullptr) 
         {
-            child = block->_right;
-            block->_right = child->_left;
-
-            if(block->_right != nullptr)
-            {
-                block->_right->_parent = block;
-            }
-        }
-        else
-        {
-            child = block->_left;
-            block->_left = child->_right;
-
-            if(block->_left != nullptr)
-            {
-                block->_left->_parent = block;
-            }
+            return;
         }
 
-        if(block->_parent == nullptr)
+        block_child_ptr = (Dir == Direction::Left) ? child->_left : child->_right;
+
+        if(block_child_ptr != nullptr) 
+        {
+            block_child_ptr->_parent = block;
+        }
+
+        child->_parent = block->_parent;
+
+        if(block->_parent == nullptr) 
         {
             this->_root = child;
-        }
-        else if(block == block->_parent->_left)
+        } 
+        else if (block == block->_parent->_left) 
         {
             block->_parent->_left = child;
-        }
-        else
+        } 
+        else 
         {
             block->_parent->_right = child;
         }
 
-        if constexpr (Dir == Direction::Left)
+        if constexpr (Dir == Direction::Left) 
         {
             child->_left = block;
-        }
-        else
+        } 
+        else 
         {
             child->_right = block;
         }
@@ -128,6 +142,11 @@ private:
         {
             parent = block->_parent;
             grandparent = parent->_parent;
+
+            if(grandparent == nullptr)
+            {
+                break;
+            }
 
             if(parent == grandparent->_left)
             {
@@ -223,6 +242,8 @@ private:
         block->_color = Color::Red;
 
         this->fixInsert(block);
+
+        this->_num_blocks++;
     }
 
     void transplant(MemoryBlock* lhs, MemoryBlock* rhs) noexcept
@@ -274,7 +295,12 @@ private:
             {
                 MemoryBlock* sib = block->_parent->_right;
 
-                if(sib != nullptr && sib->_color == Color::Red)
+                if(sib == nullptr)
+                {
+                    break;
+                }
+
+                if(sib->_color == Color::Red)
                 {
                     sib->_color = Color::Black;
                     block->_parent->_color = Color::Red;
@@ -322,7 +348,12 @@ private:
             {
                 MemoryBlock* sib = block->_parent->_left;
 
-                if(sib != nullptr && sib->_color == Color::Red)
+                if(sib == nullptr)
+                {
+                    break;
+                }
+
+                if(sib->_color == Color::Red)
                 {
                     sib->_color = Color::Black;
                     block->_parent->_color = Color::Red;
@@ -378,7 +409,7 @@ private:
     {
         MemoryBlock* x = nullptr;
         MemoryBlock* y = block;
-        Color originalColor = y->_color;
+        std::size_t originalColor = y->_color;
         
         if(block->_left == nullptr) 
         {
@@ -424,6 +455,8 @@ private:
         {
             this->fix_remove(x);
         }
+
+        this->_num_blocks--;
     }
 
     MemoryBlock* find_best_fit(const std::size_t size, MemoryBlock* block) const noexcept
@@ -460,27 +493,39 @@ private:
         return this->find_best_fit(size, block->_right);
     }
 
-    void split_block(MemoryBlock* block, const std::size_t size) noexcept
+    void split_block(MemoryBlock* block, const std::size_t requested_size) noexcept
     {
-        const std::size_t remaining_size = block->_size - size - sizeof(MemoryBlock);
+        const std::size_t original_usable_size = block->_size;
+        constexpr std::size_t header_size = sizeof(MemoryBlock);
+        constexpr std::size_t block_alignment = alignof(MemoryBlock);
 
-        if(remaining_size >= MIN_BLOCK_SIZE)
+        const void* data_end = static_cast<char*>(block->_address) + requested_size;
+
+        void* new_header_addr = align_forward(data_end, block_alignment);
+
+        const std::size_t padding = reinterpret_cast<std::uintptr_t>(new_header_addr) - reinterpret_cast<std::uintptr_t>(data_end);
+
+        void* new_data_addr = static_cast<char*>(new_header_addr) + header_size;
+
+        const std::size_t first_chunk_actual_size = requested_size + padding;
+        const std::size_t required_for_second_chunk = header_size + MIN_BLOCK_SIZE;
+
+        if (original_usable_size >= first_chunk_actual_size + required_for_second_chunk)
         {
-            void* address = static_cast<void*>(static_cast<char*>(block->_address) + size);
+            const std::size_t new_usable_size = original_usable_size - first_chunk_actual_size - header_size;
 
-            MemoryBlock* new_block = new(address) MemoryBlock(remaining_size, static_cast<void*>(static_cast<char*>(address) + sizeof(MemoryBlock)));
+            MemoryBlock* new_block = new(new_header_addr) MemoryBlock(new_usable_size, new_data_addr);
 
-            new_block->_next = block->_next;
             new_block->_prev = block;
+            new_block->_next = block->_next;
 
-            if(block->_next != nullptr)
+            if(block->_next != nullptr) 
             {
                 block->_next->_prev = new_block;
             }
 
             block->_next = new_block;
-
-            block->_size = size;
+            block->_size = requested_size;
 
             this->insert(new_block);
         }
@@ -538,14 +583,28 @@ private:
     }
 
 public:
-    Allocator(std::size_t size) : _root(nullptr)
+    Allocator(const std::size_t size) : _root(nullptr), 
+                                        _size(size),
+                                        _base_address(nullptr),
+                                        _num_blocks(0)
     {
         /* TODO: implement memory allocation here */ 
+
+        this->_base_address = std::malloc(size);
+
+        MemoryBlock* initial_block = new (this->_base_address) MemoryBlock(size - sizeof(MemoryBlock), 
+                                                                           static_cast<void*>(static_cast<char*>(this->_base_address) + sizeof(MemoryBlock)));
+
+        this->insert(initial_block);
     }
 
     ~Allocator()
     {
-
+        if(this->_base_address != nullptr)
+        {
+            std::free(this->_base_address);
+            this->_base_address = nullptr;
+        }
     }
 
     void* alloc(const std::size_t size, const std::size_t alignment) noexcept
@@ -563,8 +622,6 @@ public:
         }
 
         best->_state = BlockState::Occupied;
-
-        this->remove(best);
 
         return best->_address;
     }
@@ -585,13 +642,49 @@ public:
 
         block->_state = BlockState::Free;
 
-        this->insert(block);
-
         this->merge_blocks(block);
+    }
+
+    void print() const noexcept 
+    {
+        std::cout << "Allocator Tree (blocks: " << this->_num_blocks << "):\n";
+
+        auto print_block = [](auto&& self, MemoryBlock* block, const int depth) -> void {
+            if(block == nullptr)
+            {
+                return;
+            }
+
+            self(self, block->_right, depth + 1);
+
+            std::string indent(depth * 4, ' ');
+            std::string color = block->_color == Color::Red ? "RED" : "BLACK";
+            std::string state = block->_state == BlockState::Free ? "FREE" : "USED";
+
+            std::cout << indent << "+" << block->_size << " bytes [" << color << ", " << state << "] @ " << block->_address << "\n";
+
+            self(self, block->_left, depth + 1);
+        };
+
+        print_block(print_block, this->_root, 0);
     }
 };
 
 int main(int argc, char** argv)
 {
+    Allocator allocator(16384);
+
+    for(std::uint32_t i = 1; i < 16; i++)
+    {
+        void* addr = allocator.alloc(i * 4, 32);
+
+        if(i % 4 == 0)
+        {
+            allocator.free(addr);
+        }
+    }
+
+    allocator.print();
+
     return 0;
 }
