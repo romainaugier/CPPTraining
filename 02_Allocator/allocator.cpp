@@ -266,7 +266,7 @@ private:
         return block;
     }
 
-    void fixRemove(MemoryBlock* block) noexcept
+    void fix_remove(MemoryBlock* block) noexcept
     {
         while(block != this->_root && block != nullptr && this->_root->_color == Color::Black)
         {
@@ -422,7 +422,7 @@ private:
         
         if(originalColor == Color::Black)
         {
-            this->fixRemove(x);
+            this->fix_remove(x);
         }
     }
 
