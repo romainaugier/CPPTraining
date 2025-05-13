@@ -44,7 +44,7 @@ void quicksort(It begin, It end, Cmp cmp = Cmp()) noexcept
     sort(sort, begin, end);
 }
 
-constexpr int VECTOR_SIZE = 100;
+static constexpr int VECTOR_SIZE = 100;
 
 int main(int argc, char** argv)
 {
