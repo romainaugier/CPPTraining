@@ -60,8 +60,8 @@ private:
 
         template<typename ...Args>
         Node(Args&&... args) : _parent(nullptr),
-                            _left(nullptr),
-                            _right(nullptr)
+                               _left(nullptr),
+                               _right(nullptr)
         {
             ::new(std::addressof(this->_data)) T(std::forward<Args>(args)...);
         }
