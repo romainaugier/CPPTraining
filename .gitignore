@@ -2,5 +2,6 @@
 *.so
 *.out
 out
+*.pdb
 
 .vscode
