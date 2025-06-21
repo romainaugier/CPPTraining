@@ -42,7 +42,7 @@ int main(int argc, char** argv) noexcept
 
     for(const auto [i, x] : std::ranges::enumerate_view(signal))
     {
-        std::cout << x << (i < (signal.size() - 1)) ? ", " : "";
+        std::cout << x << ((i < (signal.size() - 1)) ? ", " : "");
     }
 
     std::cout << "\n";
@@ -53,7 +53,7 @@ int main(int argc, char** argv) noexcept
 
     for(const auto [i, x] : std::ranges::enumerate_view(waves))
     {
-        std::cout << x << (i < (waves.size() - 1)) ? ", " : "";
+        std::cout << x << ((i < (waves.size() - 1)) ? ", " : "");
     }
 
     std::cout << "\n";
