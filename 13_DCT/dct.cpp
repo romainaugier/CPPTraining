@@ -10,7 +10,7 @@
     Simple implementation of DCT-II (most commonly used form):
     https://en.wikipedia.org/wiki/Discrete_cosine_transform#DCT-II
 
-    Xk = sum(x[n] * cos((pi / N) * (n + 0.5) * k)) for n ∈ [0, N - 1] and k ∈ [0, N - 1]
+    Xk = sum(x[n] * cos((pi / N) * (n + 0.5) * k)) for n ∈ [0 .. N - 1] and k ∈ [0 .. N - 1]
 
 */
 
