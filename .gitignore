@@ -3,6 +3,7 @@
 *.out
 out
 *.pdb
+*.ilk
 
 .vscode
 
