@@ -13,6 +13,8 @@ static std::ostream_iterator<char> STDERR(std::cerr);
 
 /*
     https://dl.acm.org/doi/pdf/10.1145/363347.363387
+
+    https://arxiv.org/pdf/2407.20479#:~:text=We%20present%20a%20tool%20and,on%20the%20baseline%2C%20and%20outperforms
 */
 
 enum RegexOperatorType : std::uint16_t
